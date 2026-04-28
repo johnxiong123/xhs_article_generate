@@ -70,16 +70,15 @@ class XiaohongshuArticleSkill:
         scenes: List[str],
         persona: str,
         keywords: List[str],
-        requirements: str = "",
-        article_count: int = 5,
+        writing_notes: str = "",
+        article_count: int = 2,
         word_count: str = "800-1000字",
-        style: str = "素人口吻，轻松自然，第一人称",
     ) -> Dict:
         """
         执行完整的写作流程
 
         Args:
-            scenes: 场景列表，如 ["避孕场景", "推迟月经场景"]
+            scenes: 场景列表
             persona: 人设要求
             keywords: 必须包含的关键词
             requirements: 额外写作要求
@@ -125,10 +124,9 @@ class XiaohongshuArticleSkill:
             persona=persona,
             reference_articles=reference_articles,
             keywords=keywords,
-            requirements=requirements,
+            writing_notes=writing_notes,
             article_count=article_count,
             word_count=word_count,
-            style=style,
             style_features=style_features,
         )
 
@@ -138,8 +136,17 @@ class XiaohongshuArticleSkill:
             articles = self.article_generator.generate_articles(prompt, article_count)
             print(f"   生成 {len(articles)} 篇稿件")
             result["articles"] = articles
+            if len(articles) < article_count:
+                msg = f"⚠️ 期望生成 {article_count} 篇，实际 {len(articles)} 篇"
+                print(f"   {msg}")
+                result["errors"].append(msg)
         except Exception as e:
             result["errors"].append(f"生成稿件失败: {str(e)}")
+            return result
+
+        # 守门：若未产出任何文章，直接终止流程
+        if not articles:
+            result["errors"].append("未生成任何文章，跳过验证与写入")
             return result
 
         # 5. 关键词验证
@@ -156,27 +163,48 @@ class XiaohongshuArticleSkill:
         result["similarity_check"] = similarity_result
         print(f"   雷同度检测: {similarity_result['message']}")
 
-        # 7. 写入输出
-        if keyword_result["all_passed"]:
-            print("7. 写入输出文件...")
-            try:
-                if self.mode == "local":
-                    output_path = self.writer.write_articles(articles)
-                    print(f"   写入成功: {output_path}")
+        # 7. 写入输出：通过的写入正常文件；未通过但正文非空的写入 _failed.md 供人工修改
+        non_empty = [a for a in articles if a.get("content", "").strip()]
+        if not non_empty:
+            result["errors"].append("所有文章正文为空，跳过写入")
+            return result
+
+        per_results = keyword_result.get("results", [])
+        passed_titles = {r["title"] for r in per_results if r.get("passed")}
+        passed_articles = [a for a in non_empty if a.get("title") in passed_titles]
+        failed_articles = [a for a in non_empty if a.get("title") not in passed_titles]
+
+        result["written"] = None
+        result["written_failed"] = None
+
+        print("7. 写入输出文件...")
+        try:
+            if self.mode == "local":
+                if passed_articles:
+                    p = self.writer.write_articles(passed_articles)
+                    result["written"] = p
+                    print(f"   ✅ 通过 {len(passed_articles)} 篇 → {p}")
+                if failed_articles:
+                    fp = self.writer.write_failed(failed_articles, per_results)
+                    result["written_failed"] = fp
+                    print(f"   ⚠️ 未通过 {len(failed_articles)} 篇 → {fp}（请人工补关键词）")
+                result["success"] = bool(passed_articles)
+                if not passed_articles:
+                    result["errors"].append("无稿件通过关键词验证，已写入 _failed.md 供人工修改")
+            else:
+                if self.use_mock_feishu:
+                    self.writer.write_articles("mock-doc-id", non_empty)
+                    print("   (模拟) 写入成功")
                 else:
-                    if self.use_mock_feishu:
-                        self.writer.write_articles("mock-doc-id", articles)
-                        print("   (模拟) 写入成功")
-                    else:
-                        doc_title = f"小红书稿件_{'_'.join(scenes)}_{len(articles)}篇"
-                        document_id = self.writer.create_document(doc_title)
-                        self.writer.write_articles(document_id, articles)
-                        print(f"   写入成功: {document_id}")
-                result["success"] = True
-            except Exception as e:
-                result["errors"].append(f"写入失败: {str(e)}")
-        else:
-            result["errors"].append("关键词验证未通过，请重新生成")
+                    doc_title = f"小红书稿件_{'_'.join(scenes)}_{len(non_empty)}篇"
+                    document_id = self.writer.create_document(doc_title)
+                    self.writer.write_articles(document_id, non_empty)
+                    print(f"   写入成功: {document_id}")
+                result["success"] = keyword_result["all_passed"]
+                if not keyword_result["all_passed"]:
+                    result["errors"].append("部分稿件未通过关键词验证")
+        except Exception as e:
+            result["errors"].append(f"写入失败: {str(e)}")
 
         return result
 
@@ -212,42 +240,28 @@ def write_articles(
     scenes: List[str],
     persona: str,
     keywords: List[str],
-    requirements: str = "",
-    article_count: int = 5,
+    writing_notes: str = "",
+    article_count: int = 2,
     mode: str = "local",
 ) -> Dict:
-    """
-    便捷的稿件写作函数
-
-    Args:
-        scenes: 场景列表
-        persona: 人设要求
-        keywords: 必须包含的关键词
-        requirements: 额外写作要求
-        article_count: 生成数量
-        mode: 运行模式，"local" 或 "feishu"
-
-    Returns:
-        执行结果报告
-    """
+    """便捷的稿件写作函数"""
     skill = XiaohongshuArticleSkill(mode=mode)
     return skill.run(
         scenes=scenes,
         persona=persona,
         keywords=keywords,
-        requirements=requirements,
+        writing_notes=writing_notes,
         article_count=article_count,
     )
 
 
 if __name__ == "__main__":
-    # 示例调用（本地模式）
     result = write_articles(
         scenes=["避孕场景", "推迟月经场景"],
         persona="素人口吻，25岁女生，分享真实使用体验",
         keywords=["内射", "避孕"],
-        requirements="语气自然，不要太广告腔",
-        article_count=3,
+        writing_notes="语气自然，不要太广告腔；素人口吻，第一人称",
+        article_count=2,
         mode="local",
     )
 

@@ -70,3 +70,46 @@ class LocalWriter:
                 f.write("---\n\n")
 
         return str(output_path)
+
+    def write_failed(self, articles: List[Dict], validation_results: List[Dict]) -> str:
+        """
+        写未通过关键词验证的稿件到 _failed.md，文件头列出每篇缺失的关键词。
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        title = ""
+        if articles:
+            raw_title = articles[0].get("title", "")
+            title = re.sub(r'[\\/:*?"<>|]', '', raw_title)[:30]
+        filename = f"rewritten_{timestamp}_{title}_failed.md" if title else f"rewritten_{timestamp}_failed.md"
+        output_path = self.output_dir / filename
+
+        missing_map = {r.get("title"): r.get("missing_keywords", []) for r in validation_results if not r.get("passed")}
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(f"# 小红书稿件改写结果（未通过 - 待人工修改）\n\n")
+            f.write(f"改写时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(f"共 {len(articles)} 篇未通过关键词验证，请人工补齐缺失关键词后使用。\n\n")
+            f.write("**缺失关键词汇总：**\n\n")
+            for i, article in enumerate(articles, 1):
+                t = article.get("title", "无标题")
+                missing = missing_map.get(t, [])
+                f.write(f"- 稿件 {i}（{t}）：{', '.join(missing) if missing else '—'}\n")
+            f.write("\n---\n\n")
+
+            for i, article in enumerate(articles, 1):
+                t = article.get("title", "无标题")
+                missing = missing_map.get(t, [])
+                f.write(f"## 【稿件 {i}】⚠️ 缺失：{', '.join(missing) if missing else '—'}\n\n")
+                f.write(f"**标题**：{t}\n\n")
+                content = article.get('content', '')
+                if isinstance(content, list):
+                    content = '\n\n'.join(content)
+                f.write(f"**正文**：\n\n{content}\n\n")
+                tags = article.get('tags', '')
+                if tags:
+                    if isinstance(tags, list):
+                        tags = ' '.join([f'#{t}' for t in tags])
+                    f.write(f"**标签**：{tags}\n\n")
+                f.write("---\n\n")
+
+        return str(output_path)

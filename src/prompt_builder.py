@@ -25,10 +25,9 @@ class PromptBuilder:
         persona: str,
         reference_articles: List[Dict],
         keywords: List[str],
-        requirements: str = "",
-        article_count: int = 5,
+        writing_notes: str = "",
+        article_count: int = 2,
         word_count: str = "800-1000字",
-        style: str = "素人口吻，轻松自然，第一人称",
         style_features: Dict = None,
     ) -> str:
         """
@@ -53,6 +52,8 @@ class PromptBuilder:
 
         # 格式化参考稿件 - 提取最典型的一篇作为范文
         reference_article = self._extract_main_reference(reference_articles)
+        # 转义花括号，防止 str.format() 把范文内容里的 {xxx} 当成占位符
+        reference_article = reference_article.replace("{", "{{").replace("}", "}}")
 
         # 格式化关键词
         keywords_text = "、".join(keywords) if keywords else "无"
@@ -75,10 +76,9 @@ class PromptBuilder:
             persona=persona,
             reference_article=reference_article,
             keywords=keywords_text,
-            requirements=requirements or "无特殊要求",
+            writing_notes=writing_notes or "素人口吻，轻松自然，第一人称",
             count=article_count,
             word_count=word_count,
-            style=style,
             tone=tone,
             opening_style=opening_style,
             paragraph_structure=paragraph_structure,

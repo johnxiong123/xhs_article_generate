@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小红书素人稿件生成</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      padding: 24px 16px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 24px; color: #e6173a; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .field { margin-bottom: 18px; }
+    label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #555; }
+    label .hint { font-weight: 400; color: #999; font-size: 12px; margin-left: 6px; }
+    input[type="text"], input[type="number"], textarea {
+      width: 100%; border: 1px solid #ddd; border-radius: 8px;
+      padding: 10px 12px; font-size: 14px; outline: none;
+      transition: border-color 0.2s; font-family: inherit;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, textarea:focus { border-color: #e6173a; }
+    textarea { resize: vertical; min-height: 72px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    button.primary {
+      background: #e6173a; color: #fff; border: none; border-radius: 8px;
+      padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: background 0.2s;
+    }
+    button.primary:hover { background: #c91230; }
+    button.primary:disabled { background: #f5a0ad; cursor: not-allowed; }
+    button#generateBtn { width: 100%; padding: 14px; font-size: 16px; }
+    button.ghost {
+      background: none; border: 1px solid #ddd; border-radius: 6px;
+      padding: 6px 12px; font-size: 13px; cursor: pointer; color: #555;
+      transition: border-color 0.2s;
+    }
+    button.ghost:hover { border-color: #e6173a; color: #e6173a; }
+    button.danger {
+      background: none; border: 1px solid #ffccc7; border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; cursor: pointer; color: #cf1322;
+    }
+    button.danger:hover { background: #fff2f0; }
+
+    /* 范文管理折叠 */
+    .collapse-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; user-select: none;
+    }
+    .collapse-title { font-size: 15px; font-weight: 600; color: #444; }
+    .collapse-body { margin-top: 16px; display: none; }
+    .collapse-body.open { display: block; }
+    .ref-list { margin-bottom: 12px; }
+    .ref-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: #fafafa; border-radius: 6px; margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .ref-empty { color: #bbb; font-size: 13px; padding: 8px 0; }
+    .ref-warning {
+      font-size: 12px; color: #ad6800; background: #fffbe6;
+      border: 1px solid #ffe58f; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;
+    }
+    .upload-row { display: flex; gap: 10px; align-items: center; }
+    #fileInput { display: none; }
+    .upload-label {
+      display: inline-block; padding: 8px 16px; background: #f5f5f5;
+      border: 1px dashed #ccc; border-radius: 6px; cursor: pointer;
+      font-size: 13px; color: #666;
+    }
+    .upload-label:hover { border-color: #e6173a; color: #e6173a; }
+
+    /* Loading */
+    #loading { display: none; text-align: center; padding: 32px; color: #888; }
+    .spinner {
+      display: inline-block; width: 32px; height: 32px;
+      border: 3px solid #f3c0c8; border-top-color: #e6173a;
+      border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Results */
+    #results { display: none; }
+    .result-summary {
+      font-size: 14px; margin-bottom: 16px; padding: 12px 16px;
+      border-radius: 8px; line-height: 1.6;
+    }
+    .result-summary.success { background: #f0faf3; color: #1a7a40; border: 1px solid #b3e6c5; }
+    .result-summary.partial { background: #fffbe6; color: #7a5a00; border: 1px solid #ffe58f; }
+    .result-summary.error   { background: #fff2f0; color: #a8071a; border: 1px solid #ffccc7; }
+    .article-card { border: 1px solid #eee; border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+    .article-card.failed { border-color: #ffccc7; }
+    .article-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: #fafafa; cursor: pointer; user-select: none;
+    }
+    .article-card.failed .article-header { background: #fff2f0; }
+    .article-title { font-weight: 600; font-size: 15px; }
+    .article-badge { font-size: 12px; padding: 2px 8px; border-radius: 12px; }
+    .badge-pass { background: #f0faf3; color: #1a7a40; }
+    .badge-fail { background: #fff2f0; color: #a8071a; }
+    .article-body { padding: 16px; font-size: 14px; line-height: 1.8; white-space: pre-wrap; display: none; }
+    .article-body.open { display: block; }
+    .article-tags { font-size: 13px; color: #e6173a; margin-top: 8px; }
+    .missing-kw {
+      font-size: 13px; color: #a8071a; padding: 8px 12px;
+      background: #fff2f0; border-radius: 6px; margin-bottom: 8px;
+    }
+    .errors-list {
+      font-size: 13px; color: #a8071a; background: #fff2f0;
+      border-radius: 8px; padding: 12px 16px; margin-top: 12px;
+    }
+    .errors-list li { margin-left: 16px; margin-top: 4px; }
+    .chevron { transition: transform 0.2s; font-size: 12px; color: #aaa; }
+    .chevron.open { transform: rotate(180deg); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📝 小红书素人稿件生成</h1>
+
+  <!-- 范文管理 -->
+  <div class="card">
+    <div class="collapse-header" onclick="toggleCollapse('refPanel', 'refChevron')">
+      <span class="collapse-title">📄 范文管理</span>
+      <span class="chevron" id="refChevron">▼</span>
+    </div>
+    <div class="collapse-body" id="refPanel">
+      <div class="ref-warning">⚠️ 范文在服务器重启或重部署后会丢失，需重新上传</div>
+      <div class="ref-list" id="refList"><span class="ref-empty">加载中…</span></div>
+      <div class="upload-row">
+        <label class="upload-label" for="fileInput">+ 选择 .docx 文件</label>
+        <input type="file" id="fileInput" accept=".docx" onchange="uploadRef(this)">
+        <span id="uploadStatus" style="font-size:13px;color:#888"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 生成表单 -->
+  <div class="card">
+    <div class="field">
+      <label>场景 <span class="hint">多个场景用逗号分隔</span></label>
+      <textarea id="scenes" placeholder="避孕场景, 推迟月经场景"></textarea>
+    </div>
+    <div class="field">
+      <label>人设</label>
+      <input type="text" id="persona" value="素人口吻，真实分享" placeholder="素人口吻，25岁女生，分享真实使用体验">
+    </div>
+    <div class="field">
+      <label>关键词 <span class="hint">必须出现在正文中，多个用逗号分隔</span></label>
+      <input type="text" id="keywords" placeholder="内射, 避孕">
+    </div>
+    <div class="field">
+      <label>写作说明 <span class="hint">可选</span></label>
+      <textarea id="writing_notes" placeholder="素人口吻，第一人称，语气自然别太广告腔"></textarea>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>生成篇数</label>
+        <input type="number" id="article_count" value="5" min="1" max="20">
+      </div>
+      <div class="field">
+        <label>字数要求</label>
+        <input type="text" id="word_count" value="800-1000字">
+      </div>
+    </div>
+    <button class="primary" id="generateBtn" onclick="generate()">开始生成</button>
+  </div>
+
+  <div id="loading" class="card">
+    <div class="spinner"></div>
+    <div>正在生成稿件，预计需要 3–5 分钟，请耐心等待…</div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+const API = '';
+
+// ---- 范文管理 ----
+async function loadRefs() {
+  const list = document.getElementById('refList');
+  try {
+    const res = await fetch(`${API}/references`);
+    const { files } = await res.json();
+    if (!files.length) {
+      list.innerHTML = '<span class="ref-empty">暂无范文，请上传 .docx 文件</span>';
+      return;
+    }
+    list.innerHTML = files.map(f => `
+      <div class="ref-item">
+        <span>📄 ${f}</span>
+        <button class="danger" onclick="deleteRef('${f}')">删除</button>
+      </div>`).join('');
+  } catch {
+    list.innerHTML = '<span class="ref-empty">加载失败</span>';
+  }
+}
+
+async function uploadRef(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('uploadStatus');
+  status.textContent = '上传中…';
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch(`${API}/references/upload`, { method: 'POST', body: form });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+    status.textContent = '✅ 上传成功';
+    input.value = '';
+    loadRefs();
+  } catch (e) {
+    status.textContent = `❌ ${e.message}`;
+  }
+}
+
+async function deleteRef(filename) {
+  if (!confirm(`删除范文 "${filename}"？`)) return;
+  await fetch(`${API}/references/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  loadRefs();
+}
+
+// ---- 折叠面板 ----
+function toggleCollapse(bodyId, chevronId) {
+  document.getElementById(bodyId).classList.toggle('open');
+  document.getElementById(chevronId).classList.toggle('open');
+}
+
+// ---- 生成 ----
+function splitComma(str) {
+  return str.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+async function generate() {
+  const btn = document.getElementById('generateBtn');
+  const loading = document.getElementById('loading');
+  const resultsEl = document.getElementById('results');
+
+  const scenes = splitComma(document.getElementById('scenes').value);
+  if (!scenes.length) { alert('请填写场景'); return; }
+
+  const payload = {
+    scenes,
+    persona: document.getElementById('persona').value || '素人口吻，真实分享',
+    keywords: splitComma(document.getElementById('keywords').value),
+    writing_notes: document.getElementById('writing_notes').value,
+    article_count: parseInt(document.getElementById('article_count').value) || 5,
+    word_count: document.getElementById('word_count').value || '800-1000字',
+  };
+
+  btn.disabled = true;
+  loading.style.display = 'block';
+  resultsEl.style.display = 'none';
+  resultsEl.innerHTML = '';
+
+  try {
+    const resp = await fetch(`${API}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    renderResults(await resp.json());
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="card result-summary error">请求失败：${e.message}</div>`;
+    resultsEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    loading.style.display = 'none';
+  }
+}
+
+function renderResults(data) {
+  const el = document.getElementById('results');
+  el.style.display = 'block';
+
+  const kvMap = {};
+  for (const r of (data.keyword_validation?.results || [])) kvMap[r.title] = r;
+
+  const total = (data.articles || []).length;
+  const passedCount = (data.articles || []).filter(a => (kvMap[a.title]?.passed ?? true)).length;
+  const failedCount = total - passedCount;
+
+  let html = '';
+  if (data.success) {
+    html += `<div class="result-summary success">✅ ${passedCount} 篇通过验证，已保存到服务器</div>`;
+  } else if (total > 0) {
+    html += `<div class="result-summary partial">⚠️ ${passedCount} 篇通过验证`;
+    if (failedCount) html += `，${failedCount} 篇未通过（已标注缺失关键词）`;
+    html += '</div>';
+  } else {
+    html += `<div class="result-summary error">❌ 生成失败，未产出任何稿件</div>`;
+  }
+
+  (data.articles || []).forEach((article, i) => {
+    const kv = kvMap[article.title];
+    const passed = kv ? kv.passed : true;
+    const missing = kv?.missing_keywords || [];
+    const id = `art-${i}`;
+    html += `<div class="article-card ${passed ? '' : 'failed'}">
+      <div class="article-header" onclick="toggleArticle('${id}')">
+        <span class="article-title">【${i+1}】${article.title || '无标题'}</span>
+        <span>
+          <span class="article-badge ${passed ? 'badge-pass' : 'badge-fail'}">${passed ? '✓ 通过' : '✗ 未通过'}</span>
+          <span class="chevron" id="chv-${id}">▼</span>
+        </span>
+      </div>
+      <div class="article-body" id="${id}">
+        ${missing.length ? `<div class="missing-kw">缺失关键词：${missing.join('、')}</div>` : ''}
+        <div>${escapeHtml(article.content || '')}</div>
+        ${article.tags ? `<div class="article-tags">${article.tags}</div>` : ''}
+      </div>
+    </div>`;
+  });
+
+  if (data.errors?.length) {
+    html += `<div class="errors-list">错误：<ul>`;
+    data.errors.forEach(e => { html += `<li>${escapeHtml(e)}</li>`; });
+    html += '</ul></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function toggleArticle(id) {
+  document.getElementById(id).classList.toggle('open');
+  document.getElementById(`chv-${id}`).classList.toggle('open');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// 页面加载时拉取范文列表
+loadRefs();
+</script>
+</body>
+</html>

@@ -115,4 +115,15 @@ class WordReader:
         if current_article and current_article["content"]:
             articles.append(current_article)
 
+        # 如果没有解析到任何文章（文件不含"标题：/正文："格式），
+        # 把整个文档作为一篇范文，让 LLM 自行学习风格
+        if not articles:
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            if paragraphs:
+                articles.append({
+                    "title": paragraphs[0],
+                    "content": paragraphs[1:],
+                    "tags": [],
+                })
+
         return articles
